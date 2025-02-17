@@ -1,49 +1,69 @@
 import cv2
-import pytesseract
-
+import numpy as np
 from PIL import Image
 
-pytesseract.pytesseract.tesseract_cmd = r'D:\Program Files\Tesseract-OCR\tesseract.exe'
+import card_search
+import card_list
+import utility
 
-#image_path = r'C:\Users\carte\Desktop\HackED 2025\testing\piplup2.jpg'
-#image = Image.open(image_path)
-#extracted_text = pytesseract.image_to_string(image)
-#print(extracted_text)
+def compute_phash(img):
+    if img is None:
+        print(f'Error: Image not found')
+        return None
+    
+    phash = cv2.img_hash.PHash_create()
 
-img = cv2.imread(r'C:\Users\carte\Desktop\HackED 2025\testing\belle - hidden archer.jpg')
+    return phash.compute(img)
 
-gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+def compare(hash1, hash2, threshold=10):
+    if hash1 is not None and hash2 is not None:
+        ham_dist = cv2.norm(hash1, hash2, cv2.NORM_HAMMING)
 
-blurred = cv2.GaussianBlur(gray, (5,5),0)
+        if ham_dist < threshold:
+            print(f'Hamming Distance: {ham_dist}')
 
-thresh = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+    return ham_dist < threshold
 
-rect_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3,3))
+def process():
+    card_list.create_card_list()
 
-dilation = cv2.dilate(thresh, rect_kernel, iterations = 1)
+    height = utility.getCardHeight()
+    width = utility.getCardWidth()
 
-processed = cv2.erode(dilation, rect_kernel, iterations=1)
+    scan = cv2.imread(r'C:\Users\carte\Desktop\HackED 2025\testing\elsa - snow queen.jpg')
+    scan = cv2.resize(scan, (width, height), interpolation=cv2.INTER_AREA)
+    scan = cv2.cvtColor(scan, cv2.COLOR_BGR2GRAY)
+    scan = cv2.GaussianBlur(scan, (3,3), 0)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+    scan = clahe.apply(scan)
 
-contours, hierarchy = cv2.findContours(dilation, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    if scan is None:
+        print('Error: Image not found.')
+        exit()
 
-im2 = img.copy()
+    hash_scan = compute_phash(scan)
 
-file = open("recognized.txt", "w+")
-file.write("")
-file.close()
+    imgs = card_list.getImages()
 
-for cnt in contours:
-    x, y, w, h = cv2.boundingRect(cnt)
+    for i in range(len(imgs)):
+        search_img = imgs[i]
+        search_img = cv2.resize(search_img, (width, height),interpolation=cv2.INTER_AREA)
+        search_img = cv2.GaussianBlur(search_img, (3,3), 0)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        search_img = clahe.apply(search_img)
+        hash_search = compute_phash(search_img)
 
-    rect = cv2.rectangle(im2, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        if compare(hash_scan, hash_search):
+            print(f'Match Found: {card_list.names[i]}')
+            #cv2.imshow('Input', scan)
+            #cv2.waitKey(0)
+            #cv2.destroyAllWindows()
+            #cv2.imshow(f'{cards[i]['Name']}', search_img)
+            #cv2.waitKey(0)
+            #cv2.destroyAllWindows()
 
-    cropped = im2[y:y + h, x:x + w]
+process()
+    
+    
+    
 
-    file = open("recognized.txt", "a")
-
-    text = pytesseract.image_to_string(cropped)
-
-    file.write(text)
-    file.write("\n")
-
-    file.close()
